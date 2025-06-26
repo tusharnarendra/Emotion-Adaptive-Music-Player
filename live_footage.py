@@ -2,9 +2,19 @@ from flask import Flask, render_template, Response
 from picamera2 import Picamera2
 import cv2
 import time
+import joblib
+from model_features import xFeatures
 
 # Create the flask app
 app = Flask(__name__)
+
+# Load the trained ML_model 
+regressor = joblib.load('svr_multioutput_model.pkl')
+sc_X = joblib.load('X_scaler.pkl')
+sc_y = joblib.load('y_scaler.pkl')
+
+#Features extraction
+extractor = xFeatures()
 
 def gen_frames():
     # Initialize Picamera2 inside the generator function
@@ -26,6 +36,16 @@ def gen_frames():
             ret, buffer = cv2.imencode('.jpg', frame)
             if not ret:
                 print("Failed to encode the frame")
+            features = extractor.process_frame(frame)
+            if features is not None:
+                print("Features extracted")
+            else:
+                print("No face detected")
+            X_scaled = sc_X.transform([features])
+            y_pred = sc_y.inverse_transform(regressor.predict(X_scaled))
+            valence = y_pred[0][0]
+            arousal = y_pred[0][1]
+            print(f"Valence: {valence} Arousal: {arousal}")
             frame = buffer.tobytes()
             # Yield as part of HTTP response (produce a sequence of values over time one at a time instead of all at once)
             yield(b'--frame\r\n'b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
